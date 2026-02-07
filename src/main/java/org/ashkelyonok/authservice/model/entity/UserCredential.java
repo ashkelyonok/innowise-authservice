@@ -38,6 +38,9 @@ public class UserCredential {
     @Column(name = "user_id", nullable = false, unique = true)
     private Long userId;
 
+    @Column(nullable = false, unique = true, length = 50)
+    private String username;
+
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 

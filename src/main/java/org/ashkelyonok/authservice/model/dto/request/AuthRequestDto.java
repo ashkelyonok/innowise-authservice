@@ -1,7 +1,6 @@
 package org.ashkelyonok.authservice.model.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -10,13 +9,12 @@ import lombok.Data;
 @Schema(description = "Request DTO for user authentication (login)")
 public class AuthRequestDto {
 
-    @Schema(description = "User email",
-            example = "user@gmail.com",
+    @Schema(description = "User username",
+            example = "cool_user_99",
             requiredMode = Schema.RequiredMode.REQUIRED)
-    @NotBlank(message = "Email is required")
-    @Email(message = "Email should be valid")
-    @Size(max = 100, message = "Email must not exceed 100 characters")
-    private String email;
+    @NotBlank(message = "Username is required")
+    @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+    private String username;
 
     @Schema(description = "User password",
             example = "StrongP@ss123!",

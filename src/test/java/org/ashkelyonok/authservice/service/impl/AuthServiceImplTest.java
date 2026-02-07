@@ -26,8 +26,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.Assert.assertThrows;
@@ -36,7 +36,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -46,7 +45,6 @@ class AuthServiceImplTest {
 
     @Mock private UserCredentialRepository credentialRepository;
     @Mock private RefreshTokenRepository tokenRepository;
-    @Mock private PasswordEncoder passwordEncoder;
     @Mock private JwtUtil jwtUtil;
     @Mock private AuthenticationManager authenticationManager;
     @Mock private UserCredentialMapper credentialMapper;
@@ -59,9 +57,10 @@ class AuthServiceImplTest {
     @DisplayName("Register: Should Throw Exception if Email Exists")
     void register_EmailExists_ThrowException() {
         RegisterRequestDto req = new RegisterRequestDto();
-        req.setEmail("exists@test.com");
+        req.setUsername("exists");
+        req.setEmail("test@test.com");
 
-        when(credentialRepository.existsByEmail(anyString())).thenReturn(true);
+        when(credentialRepository.existsByEmail("test@test.com")).thenReturn(true);
 
         assertThrows(UserAlreadyExistsException.class, () -> authService.register(req));
     }
@@ -71,17 +70,19 @@ class AuthServiceImplTest {
     void register_Success() {
         RegisterRequestDto req = new RegisterRequestDto();
         req.setEmail("new@test.com");
+        req.setUsername("new_user");
         req.setPassword("pass");
 
         UserResponseDto mockResponse = new UserResponseDto();
         mockResponse.setId(999L);
         UserCredential credential = new UserCredential();
         credential.setId(1L);
+        credential.setUsername("new_user");
+        credential.setEmail("new@test.com");
 
-        when(credentialRepository.existsByEmail(anyString())).thenReturn(false);
+        when(credentialRepository.existsByEmail("new@test.com")).thenReturn(false);
         when(userServiceClient.createUser(any())).thenReturn(mockResponse);
         when(credentialMapper.toEntity(any())).thenReturn(credential);
-        when(passwordEncoder.encode(any())).thenReturn("hashedPass");
         when(jwtUtil.generateAccessToken(any())).thenReturn("access");
         when(jwtUtil.generateRefreshToken(any())).thenReturn("refresh");
 
@@ -98,14 +99,14 @@ class AuthServiceImplTest {
     @DisplayName("Login: Should Success")
     void login_Success() {
         AuthRequestDto req = new AuthRequestDto();
-        req.setEmail("user@test.com");
+        req.setUsername("user");
         req.setPassword("pass");
 
         UserCredential credential = new UserCredential();
-        credential.setEmail("user@test.com");
+        credential.setUsername("user");
 
         when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(null);
-        when(credentialRepository.findByEmail(req.getEmail())).thenReturn(Optional.of(credential));
+        when(credentialRepository.findByUsername(req.getUsername())).thenReturn(Optional.of(credential));
         when(jwtUtil.generateAccessToken(any())).thenReturn("access");
         when(jwtUtil.generateRefreshToken(any())).thenReturn("refresh");
 
@@ -121,11 +122,11 @@ class AuthServiceImplTest {
     @DisplayName("Login: Should Throw UserNotFoundException (Covers lambda$getCredentialByEmail$1)")
     void login_UserNotFound_ThrowException() {
         AuthRequestDto req = new AuthRequestDto();
-        req.setEmail("missing@test.com");
+        req.setUsername("missing");
         req.setPassword("pass");
 
         when(authenticationManager.authenticate(any())).thenReturn(null);
-        when(credentialRepository.findByEmail(req.getEmail())).thenReturn(Optional.empty());
+        when(credentialRepository.findByUsername(req.getUsername())).thenReturn(Optional.empty());
 
         assertThrows(UserNotFoundException.class, () -> authService.login(req));
     }
@@ -139,6 +140,7 @@ class AuthServiceImplTest {
         RefreshToken storedToken = new RefreshToken();
         storedToken.setRevoked(false);
         storedToken.setCredential(new UserCredential());
+        storedToken.setExpirationDate(LocalDateTime.now().plusDays(1));
 
         when(jwtUtil.isTokenValid("valid_refresh_token")).thenReturn(true);
         when(tokenRepository.findByToken("valid_refresh_token")).thenReturn(Optional.of(storedToken));
@@ -197,7 +199,13 @@ class AuthServiceImplTest {
         TokenValidationRequestDto req = new TokenValidationRequestDto();
         req.setToken("valid_token");
 
+        UserCredential user = new UserCredential();
+        user.setEnabled(true);
+        user.setAccountNonLocked(true);
+
         when(jwtUtil.isTokenValid("valid_token")).thenReturn(true);
+        when(jwtUtil.extractUsername("valid_token")).thenReturn("test@test.com");
+        when(credentialRepository.findByUsername("test@test.com")).thenReturn(Optional.of(user));
         when(jwtUtil.extractUserId("valid_token")).thenReturn(123L);
         when(jwtUtil.extractRole("valid_token")).thenReturn("USER");
 

@@ -28,28 +28,24 @@ public class AuthController implements AuthControllerApi {
     @Override
     @PostMapping("/register")
     public ResponseEntity<AuthResponseDto> register(@RequestBody @Valid RegisterRequestDto request) {
-        log.info("Received registration request for email: {}", request.getEmail());
         return ResponseEntity.ok(authService.register(request));
     }
 
     @Override
     @PostMapping("/login")
     public ResponseEntity<AuthResponseDto> login(@RequestBody @Valid AuthRequestDto request) {
-        log.info("Received login request for email: {}", request.getEmail());
         return ResponseEntity.ok(authService.login(request));
     }
 
     @Override
     @PostMapping("/refresh")
     public ResponseEntity<AuthResponseDto> refresh(@RequestBody @Valid RefreshTokenRequestDto request) {
-        log.debug("Received refresh token request");
         return ResponseEntity.ok(authService.refreshToken(request));
     }
 
     @Override
     @PostMapping("/validate")
     public ResponseEntity<TokenValidationResponseDto> validate(@RequestBody @Valid TokenValidationRequestDto request) {
-        log.debug("Received token validation request");
         return ResponseEntity.ok(authService.validateToken(request));
     }
 }

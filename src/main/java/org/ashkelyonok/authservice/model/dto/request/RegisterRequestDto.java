@@ -29,6 +29,13 @@ public class RegisterRequestDto {
     @Size(min = 2, max = 50, message = "Surname must be between 2 and 50 characters")
     private String surname;
 
+    @Schema(description = "Unique username",
+            example = "john_doe_99",
+            requiredMode = Schema.RequiredMode.REQUIRED)
+    @NotBlank(message = "Username is required")
+    @Size(min = 3, max = 50, message = "Username must be between 3 and 50 characters")
+    private String username;
+
     @NotNull(message = "Birth date is required")
     @Past(message = "Birth date must be in the past")
     private LocalDate birthDate;

@@ -46,18 +46,18 @@ public class JwtUtil {
 
     private String buildToken(Map<String, Object> extraClaims, UserCredential user, long expiration) {
         extraClaims.put("userId", user.getUserId());
-        extraClaims.put("role", user.getRole().name());
+        extraClaims.put("role", "ROLE_" + user.getRole().name());
 
         return Jwts.builder()
                 .claims(extraClaims)
-                .subject(user.getEmail())
+                .subject(user.getUsername())
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey(), Jwts.SIG.HS256)
                 .compact();
     }
 
-    public String extractEmail(String token) {
+    public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
     }
 

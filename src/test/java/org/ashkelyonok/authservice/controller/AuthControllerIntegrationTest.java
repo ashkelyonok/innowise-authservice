@@ -79,6 +79,7 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
         RegisterRequestDto request = new RegisterRequestDto();
         request.setName("John");
         request.setSurname("Doe");
+        request.setUsername("john_doe");
         request.setBirthDate(LocalDate.of(1990, 1, 1));
         request.setEmail("john.doe@example.com");
         request.setPassword("StrongPass123!");
@@ -155,7 +156,7 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
         registerUserHelper();
 
         AuthRequestDto loginRequest = new AuthRequestDto();
-        loginRequest.setEmail("john.doe@example.com");
+        loginRequest.setUsername("john_doe");
         loginRequest.setPassword("StrongPass123!");
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -169,7 +170,7 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
     @DisplayName("Should Fail Login: User Not Found")
     void login_Fail_UserNotFound() throws Exception {
         AuthRequestDto loginRequest = new AuthRequestDto();
-        loginRequest.setEmail("ghost@example.com");
+        loginRequest.setUsername("ghost");
         loginRequest.setPassword("StrongPass123!");
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -184,7 +185,7 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
         registerUserHelper();
 
         AuthRequestDto loginRequest = new AuthRequestDto();
-        loginRequest.setEmail("john.doe@example.com");
+        loginRequest.setUsername("john_doe");
         loginRequest.setPassword("StrongPass123!");
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
@@ -226,7 +227,7 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
         registerUserHelper();
 
         AuthRequestDto loginRequest = new AuthRequestDto();
-        loginRequest.setEmail("john.doe@example.com");
+        loginRequest.setUsername("john_doe");
         loginRequest.setPassword("StrongPass123!");
 
         MvcResult result = mockMvc.perform(post("/api/v1/auth/login")
@@ -247,7 +248,7 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.valid", is(true)))
                 .andExpect(jsonPath("$.userId", is(100)))
-                .andExpect(jsonPath("$.role", is("USER")));
+                .andExpect(jsonPath("$.role", is("ROLE_USER")));
     }
 
     @Test

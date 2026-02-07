@@ -21,6 +21,7 @@ import org.ashkelyonok.authservice.repository.RefreshTokenRepository;
 import org.ashkelyonok.authservice.repository.UserCredentialRepository;
 import org.ashkelyonok.authservice.service.AuthService;
 import org.ashkelyonok.authservice.util.JwtUtil;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -37,11 +38,13 @@ public class AuthServiceImpl implements AuthService {
 
     private final UserCredentialRepository credentialRepository;
     private final RefreshTokenRepository tokenRepository;
-    private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
     private final UserCredentialMapper credentialMapper;
     private final UserServiceClient userServiceClient;
+
+    @Value("${jwt.refresh-expiration}")
+    private long refreshExpiration;
 
     @Override
     @Transactional
@@ -57,7 +60,6 @@ public class AuthServiceImpl implements AuthService {
 
         UserCredential credential = credentialMapper.toEntity(request);
         credential.setUserId(userId);
-        credential.setPassword(passwordEncoder.encode(request.getPassword()));
 
         credentialRepository.save(credential);
         log.info("User registered with internal ID: {}", credential.getId());
@@ -68,13 +70,13 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResponseDto login(AuthRequestDto request) {
-        log.info("Authenticating user: {}", request.getEmail());
+        log.info("Authenticating user: {}", request.getUsername());
 
         authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
         );
 
-        UserCredential user = getCredentialByEmail(request.getEmail());
+        UserCredential user = getCredentialByUsername(request.getUsername());
 
         return generateTokens(user);
     }
@@ -83,6 +85,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResponseDto refreshToken(RefreshTokenRequestDto request) {
         String token = request.getRefreshToken();
+        log.debug("Processing refresh token request");
 
         if (!jwtUtil.isTokenValid(token)) {
             throw new InvalidTokenException("Invalid refresh token format");
@@ -95,19 +98,45 @@ public class AuthServiceImpl implements AuthService {
             throw new TokenRefreshException(token, "Token was revoked");
         }
 
+        if (storedToken.getExpirationDate().isBefore(LocalDateTime.now())) {
+            tokenRepository.delete(storedToken);
+            throw new TokenRefreshException(token, "Refresh token expired");
+        }
+
         storedToken.setRevoked(true);
         tokenRepository.save(storedToken);
+        log.debug("Refresh token revoked, generating new tokens");
 
         return generateTokens(storedToken.getCredential());
     }
 
     @Override
     public TokenValidationResponseDto validateToken(TokenValidationRequestDto request) {
+        log.debug("Validating token");
+
         try {
             String token = request.getToken();
 
             if (!jwtUtil.isTokenValid(token)) {
                 return buildValidationResponse(false, null, null, "Invalid Token Signature or Expired");
+            }
+
+            var storedToken = tokenRepository.findByToken(token).orElse(null);
+
+            if (storedToken != null && storedToken.isRevoked()) {
+                return buildValidationResponse(false, null, null, "Token has been revoked");
+            }
+
+            String username = jwtUtil.extractUsername(token);
+            UserCredential user = credentialRepository.findByUsername(username)
+                    .orElse(null);
+
+            if (user == null) {
+                return buildValidationResponse(false, null, null, "User no longer exists");
+            }
+
+            if (!user.isEnabled() || !user.isAccountNonLocked()) {
+                return buildValidationResponse(false, null, null, "Account is locked or disabled");
             }
 
             return buildValidationResponse(
@@ -123,9 +152,9 @@ public class AuthServiceImpl implements AuthService {
         }
     }
 
-    private UserCredential getCredentialByEmail(String email) {
-        return credentialRepository.findByEmail(email)
-                .orElseThrow(() -> new UserNotFoundException("User not found: " + email));
+    private UserCredential getCredentialByUsername(String username) {
+        return credentialRepository.findByUsername(username)
+                .orElseThrow(() -> new UserNotFoundException("User not found: " + username));
     }
 
     private AuthResponseDto generateTokens(UserCredential user) {
@@ -141,12 +170,12 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private void saveRefreshToken(UserCredential user, String token) {
-        long refreshDurationMs = 604800000L;
+        LocalDateTime expiryDate = LocalDateTime.now().plus(java.time.Duration.ofMillis(refreshExpiration));
 
         RefreshToken refreshToken = RefreshToken.builder()
                 .token(token)
                 .credential(user)
-                .expirationDate(LocalDateTime.now().plusNanos(refreshDurationMs * 1_000_000))
+                .expirationDate(expiryDate)
                 .revoked(false)
                 .build();
         tokenRepository.save(refreshToken);
