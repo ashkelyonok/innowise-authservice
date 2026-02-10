@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  auth-db:
+    image: postgres:15-alpine
+    container_name: auth-db
+    ports:
+      - "${DB_PORT}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    networks:
+      - auth-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build: .
+    container_name: auth-service
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION}
+      application.config.user-service-url: ${USER_SERVICE_URL}
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    networks:
+      - auth-network
+
+volumes:
+  auth_db_data:
+
+networks:
+  auth-network:
+    driver: bridge
