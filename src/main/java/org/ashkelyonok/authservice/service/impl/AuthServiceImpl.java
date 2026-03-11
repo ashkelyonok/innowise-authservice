@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.ashkelyonok.authservice.client.UserServiceClient;
 import org.ashkelyonok.authservice.exception.InvalidTokenException;
+import org.ashkelyonok.authservice.exception.RegistrationFailedException;
 import org.ashkelyonok.authservice.exception.TokenRefreshException;
 import org.ashkelyonok.authservice.exception.UserAlreadyExistsException;
 import org.ashkelyonok.authservice.exception.UserNotFoundException;
@@ -22,9 +23,9 @@ import org.ashkelyonok.authservice.repository.UserCredentialRepository;
 import org.ashkelyonok.authservice.service.AuthService;
 import org.ashkelyonok.authservice.util.JwtUtil;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +43,7 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final UserCredentialMapper credentialMapper;
     private final UserServiceClient userServiceClient;
+    private final Environment environment;
 
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
@@ -58,13 +60,20 @@ public class AuthServiceImpl implements AuthService {
         UserResponseDto userResponse = userServiceClient.createUser(request);
         Long userId = userResponse.getId();
 
-        UserCredential credential = credentialMapper.toEntity(request);
-        credential.setUserId(userId);
+        try {
+            UserCredential credential = credentialMapper.toEntity(request);
+            credential.setUserId(userId);
 
-        credentialRepository.save(credential);
-        log.info("User registered with internal ID: {}", credential.getId());
+            credentialRepository.save(credential);
+            log.info("User registered with internal ID: {}", credential.getId());
 
-        return generateTokens(credential);
+            return generateTokens(credential);
+
+        } catch (Exception ex) {
+            log.error("Failed to save credentials for user {}. Initiating rollback in User Service.", request.getEmail(), ex);
+            performRollback(userId);
+            throw new RegistrationFailedException("Registration failed due to internal error. Rollback executed.", ex);
+        }
     }
 
     @Override
@@ -188,5 +197,22 @@ public class AuthServiceImpl implements AuthService {
                 .role(role)
                 .errorMessage(error)
                 .build();
+    }
+
+    private void performRollback(Long userId) {
+        try {
+            UserCredential systemUser = getSystemUser();
+            String systemToken = "Bearer " + jwtUtil.generateAccessToken(systemUser);
+            userServiceClient.deleteUser(systemToken, userId);
+            log.info("Rollback successful: Deleted orphaned user profile with ID {}", userId);
+        } catch (Exception ex) {
+            log.error("CRITICAL: Rollback failed! Orphaned user profile exists in User Service with ID {}. Manual intervention required.", userId, ex);
+        }
+    }
+
+    private UserCredential getSystemUser() {
+        String systemUsername = environment.getProperty("system.user.username", "system");
+        return credentialRepository.findByUsername(systemUsername)
+                .orElseThrow(() -> new IllegalStateException("System user not found in database"));
     }
 }

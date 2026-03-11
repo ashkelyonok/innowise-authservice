@@ -1,7 +1,7 @@
 package org.ashkelyonok.authservice.util;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
@@ -14,7 +14,6 @@ import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Function;
 
 /**
  * Utility class for handling JWT operations.
@@ -35,6 +34,8 @@ public class JwtUtil {
 
     @Value("${jwt.refresh-expiration}")
     private long refreshExpiration;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public String generateAccessToken(UserCredential user) {
         return buildToken(new HashMap<>(), user, jwtExpiration);
@@ -57,46 +58,36 @@ public class JwtUtil {
                 .compact();
     }
 
+    private JsonNode getPayload(String token) {
+        try {
+            String[] chunks = token.split("\\.");
+            String payload = new String(java.util.Base64.getUrlDecoder().decode(chunks[1]));
+            return objectMapper.readTree(payload);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid token format");
+        }
+    }
+
     public String extractUsername(String token) {
-        return extractClaim(token, Claims::getSubject);
+        return getPayload(token).get("sub").asText();
     }
 
     public Long extractUserId(String token) {
-        return extractClaim(token, claims -> claims.get("userId", Long.class));
+        return getPayload(token).get("userId").asLong();
     }
 
     public String extractRole(String token) {
-        return extractClaim(token, claims -> claims.get("role", String.class));
-    }
-
-    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = extractAllClaims(token);
-        return claimsResolver.apply(claims);
-    }
-
-    private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+        return getPayload(token).get("role").asText();
     }
 
     public boolean isTokenValid(String token) {
         try {
-            return !isTokenExpired(token);
-        } catch (JwtException | IllegalArgumentException e) {
-            log.warn("Invalid JWT Token: {}", e.getMessage());
+            long expSeconds = getPayload(token).get("exp").asLong();
+            Date expirationDate = new Date(expSeconds * 1000);
+            return expirationDate.after(new Date());
+        } catch (Exception e) {
             return false;
         }
-    }
-
-    private boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
-    }
-
-    private Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
     }
 
     private SecretKey getSigningKey() {
