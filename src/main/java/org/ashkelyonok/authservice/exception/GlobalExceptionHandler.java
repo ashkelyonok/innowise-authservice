@@ -50,6 +50,12 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.UNAUTHORIZED, "Authentication Failed", "Invalid email or password", request);
     }
 
+    @ExceptionHandler(RegistrationFailedException.class)
+    public ResponseEntity<ErrorResponseDto> handleRegistrationFailed(RegistrationFailedException ex, HttpServletRequest request) {
+        log.error("Registration rollback triggered: {}", ex.getMessage());
+        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Registration Failed", "We encountered an issue creating your account. Please try again later.", request);
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ErrorResponseDto> handleAuthenticationException(AuthenticationException ex, HttpServletRequest request) {
         log.warn("Authentication failed: {}", ex.getMessage());
